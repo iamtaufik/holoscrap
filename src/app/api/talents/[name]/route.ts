@@ -1,13 +1,15 @@
 import axios from 'axios';
 import cheerio from 'cheerio';
 import { NextRequest, NextResponse } from 'next/server';
+import { useFetch } from '@/libs/useFetch';
 
 export const GET = async (req: NextRequest, context: { params: { name: string } }) => {
   const name = context.params.name;
   try {
-    const scheduleApi = await axios.get('https://schedule.hololive.tv/api/list');
-    const response = await axios.get(`${process.env.BASE_URL}/talents/${name}/`);
-    const html = response.data;
+    const scheduleApi = await (await fetch('https://schedule.hololive.tv/api/list', { next: { revalidate: 10 } })).json();
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const response = await useFetch(`${process.env.BASE_URL}/talents/${name}/`);
+    const html = response as string;
     const $ = cheerio.load(html);
     const romanji = $('#container > main > article > div.talent_top > div.container > div.right_box > div > h1')
       .text()
@@ -40,17 +42,18 @@ export const GET = async (req: NextRequest, context: { params: { name: string } 
       })
       .get();
 
-    let schedule: any;
-    const scheduleListPerDate: [] = scheduleApi.data.dateGroupList;
-
+    const scheduleListPerDate: any[] = scheduleApi.dateGroupList;
     const currentDate = new Date().getDate();
     const cuurentDateSchedule: any = scheduleListPerDate.find((list: any) => {
       const listDate = new Date(list.datetime).getDate();
       return listDate === currentDate;
     });
 
-    const listVideo: [] = cuurentDateSchedule ? cuurentDateSchedule.videoList : [];
-    schedule = listVideo.filter((video: any) => video.name === romanji.replace(/^[^\s]+(\s|$)/, '') || video.name === native);
+    const schedules = cuurentDateSchedule.videoList.filter((schedules: any) => {
+      const scheduleName = schedules.name as string;
+
+      return romanji.match(scheduleName) || native.match(scheduleName);
+    });
 
     return NextResponse.json({
       name: { romanji, native },
@@ -59,7 +62,7 @@ export const GET = async (req: NextRequest, context: { params: { name: string } 
       images,
       videoProfile: videoProfile || null,
       socialMedia: [{ youtube: socialMedias[0] }, { twitter: socialMedias[1] }],
-      schedule: schedule,
+      schedules: schedules,
       isSucces: true,
     });
   } catch (error: any) {
